@@ -295,19 +295,6 @@ The Jupyter Notebook `Comment_Toxicity_Detection.ipynb` walks through all 13 ste
 
 ---
 
-## 👤 Author
 
-**[Your Name]**
-Domain: NLP / Deep Learning / Content Moderation
-Stack: Python, PyTorch, Streamlit
-
----
-
-## 📄 License
-
-This project is for educational purposes.
-Dataset: [Jigsaw Toxic Comment Classification Challenge](https://www.kaggle.com/competitions/jigsaw-toxic-comment-classification-challenge) — Kaggle.
-
----
 
 ## ⭐ If this project helped you, give it a star on GitHub!
