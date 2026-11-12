@@ -1,24 +1,13 @@
 """
 comment_toxicity_detection_pytorch.py
-=======================================
-Full pipeline for Comment Toxicity Detection using PyTorch.
-This is a complete replacement for the TensorFlow version.
+=====================================
+Full training pipeline for Comment Toxicity Detection (PyTorch BiLSTM).
 
-What changed vs the TensorFlow version:
-  - tensorflow / keras  →  torch, torch.nn, torch.utils.data
-  - Sequential model    →  Custom nn.Module class (BiLSTMClassifier)
-  - Tokenizer (Keras)   →  Manual vocabulary builder using collections.Counter
-  - pad_sequences       →  Manual padding using torch.nn.utils.rnn.pad_sequence
-  - model.fit()         →  Manual training loop (for epoch / for batch)
-  - ModelCheckpoint     →  torch.save() / torch.load()
-  - EarlyStopping       →  Manual best-loss tracking with patience counter
-
-Everything else (EDA, preprocessing, evaluation, Streamlit artifacts) is the same.
-
-Run this script with:
+Run from anywhere:
     python comment_toxicity_detection_pytorch.py
 
-Make sure train.csv and test.csv are in the same folder.
+train.csv and test.csv must sit in the same folder as this script.
+All outputs (model, vocab, config, predictions, plots) are written to that folder.
 """
 
 # =============================================================================
@@ -27,6 +16,7 @@ Make sure train.csv and test.csv are in the same folder.
 
 import os
 import re
+import sys
 import string
 import pickle
 import warnings
@@ -49,13 +39,23 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence
 
 warnings.filterwarnings('ignore')
+
+# FIX: Windows consoles (cmd, Spyder, IDLE, VS Code) often use cp1252, which
+# cannot print the box-drawing and emoji characters below and crashes with
+# UnicodeEncodeError. Force UTF-8 output, and replace anything still unprintable.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
 
 # Fix random seeds so results are reproducible
 np.random.seed(42)
 torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(42)
 
 # Use GPU if available, otherwise CPU
 # PyTorch requires you to explicitly move data and model to the device
@@ -73,8 +73,12 @@ print("All libraries imported successfully!\n")
 # CONSTANTS
 # =============================================================================
 
-TRAIN_FILE     = "train.csv"
-TEST_FILE      = "test.csv"
+# FIX: every path is built from the folder this script lives in, so it works
+# no matter which folder you run it from (replaces the hard-coded os.chdir).
+BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
+
+TRAIN_FILE     = os.path.join(BASE_DIR, "train.csv")
+TEST_FILE      = os.path.join(BASE_DIR, "test.csv")
 MAX_VOCAB      = 30000       # Keep top 30,000 most common words
 MAX_SEQ_LEN    = 200         # Pad / truncate comments to 200 words
 EMBEDDING_DIM  = 64          # Each word → 64-dimension vector
@@ -87,10 +91,11 @@ LABEL_COLS     = [
     'toxic', 'severe_toxic', 'obscene',
     'threat', 'insult', 'identity_hate'
 ]
-PLOTS_DIR      = "plots"
-MODEL_PATH     = "toxicity_model_pytorch.pth"   # .pth is the PyTorch convention
-VOCAB_PATH     = "vocab_pytorch.pkl"            # We save the vocabulary separately
-OUTPUT_CSV     = "test_predictions_pytorch.csv"
+PLOTS_DIR      = os.path.join(BASE_DIR, "plots")
+MODEL_PATH     = os.path.join(BASE_DIR, "toxicity_model_pytorch.pth")   # .pth is the PyTorch convention
+VOCAB_PATH     = os.path.join(BASE_DIR, "vocab_pytorch.pkl")            # We save the vocabulary separately
+CONFIG_PATH    = os.path.join(BASE_DIR, "model_config_pytorch.pkl")
+OUTPUT_CSV     = os.path.join(BASE_DIR, "test_predictions_pytorch.csv")
 
 # Special tokens used in the vocabulary
 PAD_TOKEN = "<PAD>"   # Used to pad short sequences to MAX_SEQ_LEN
@@ -100,10 +105,7 @@ OOV_TOKEN = "<OOV>"   # Used for words not seen during training
 # =============================================================================
 # STEP 2 — Load the Dataset
 # =============================================================================
-import os
-
-os.chdir(r"D:\Python\Project\Project 5")
-print("Current Directory:", os.getcwd())
+print("Project folder:", BASE_DIR)
 
 def load_data(train_path: str, test_path: str):
     """Load training and test CSV files."""
@@ -111,8 +113,18 @@ def load_data(train_path: str, test_path: str):
     print("STEP 2 — Loading Dataset")
     print("─" * 50)
 
+    # FIX: stop with a clear message instead of a long traceback
+    for path in (train_path, test_path):
+        if not os.path.exists(path):
+            sys.exit(f"ERROR: {os.path.basename(path)} not found in {BASE_DIR}\n"
+                     "Put train.csv and test.csv in the same folder as this script.")
+
     train_df = pd.read_csv(train_path)
     test_df  = pd.read_csv(test_path)
+
+    # FIX: an empty comment is read as NaN (a float), which breaks text cleaning
+    train_df['comment_text'] = train_df['comment_text'].fillna('').astype(str)
+    test_df['comment_text']  = test_df['comment_text'].fillna('').astype(str)
 
     print(f"Train shape : {train_df.shape}")
     print(f"Test shape  : {test_df.shape}")
@@ -213,6 +225,8 @@ def clean_text(text: str) -> str:
     Clean a raw comment string.
     Same logic as the TensorFlow version — preprocessing is framework-agnostic.
     """
+    if not isinstance(text, str):          # FIX: NaN / numbers → empty string
+        text = '' if pd.isna(text) else str(text)
     text = text.lower()
     text = text.replace('\n', ' ').replace('\t', ' ')
     text = re.sub(r'http\S+|www\.\S+', '', text)
@@ -654,7 +668,7 @@ def train_model(model: BiLSTMClassifier,
                 break
 
     # Load the best weights back into the model
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE, weights_only=True))
     print("\nTraining complete! Best model weights restored.")
 
     return history
@@ -904,7 +918,7 @@ def save_artifacts(model: BiLSTMClassifier, vocab: dict,
         'num_labels':    len(LABEL_COLS),
         'max_seq_len':   MAX_SEQ_LEN,
     }
-    config_path = 'model_config_pytorch.pkl'
+    config_path = CONFIG_PATH
     with open(config_path, 'wb') as f:
         pickle.dump(model_config, f)
     print(f"Model config saved  : {config_path}")

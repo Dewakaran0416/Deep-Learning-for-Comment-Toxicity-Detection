@@ -1,0 +1,25 @@
+# Datasets: too large for GitHub, download from Kaggle
+train.csv
+test.csv
+test_predictions_pytorch.csv
+
+# Local backups
+*_ORIGINAL.py
+
+# Python / Jupyter
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+.streamlit/
