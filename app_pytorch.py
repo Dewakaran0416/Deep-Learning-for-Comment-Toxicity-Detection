@@ -17,6 +17,7 @@ Required files in the same folder:
     model_config_pytorch.pkl
 """
 
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -27,6 +28,16 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+
+# FIX: this file must be started with `streamlit run`, not `python`.
+if __name__ == "__main__":
+    try:
+        from streamlit.runtime import exists as _st_running
+        if not _st_running():
+            print("Start the app with:\n    streamlit run app_pytorch.py")
+            raise SystemExit(0)
+    except ImportError:
+        pass
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -57,6 +68,13 @@ LABEL_ICONS = {
     'identity_hate': '🟢'
 }
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# FIX: load the model files from the folder this app lives in, so
+# `streamlit run app_pytorch.py` works from any folder.
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH  = os.path.join(BASE_DIR, 'toxicity_model_pytorch.pth')
+VOCAB_PATH  = os.path.join(BASE_DIR, 'vocab_pytorch.pkl')
+CONFIG_PATH = os.path.join(BASE_DIR, 'model_config_pytorch.pkl')
 PAD_TOKEN = "<PAD>"
 OOV_TOKEN = "<OOV>"
 
@@ -89,7 +107,9 @@ class BiLSTMClassifier(nn.Module):
 
 # ── Helper Functions ──────────────────────────────────────────────────────────
 
-def clean_text(text: str) -> str:
+def clean_text(text) -> str:
+    if not isinstance(text, str):          # FIX: empty CSV cells arrive as NaN
+        text = '' if pd.isna(text) else str(text)
     text = text.lower()
     text = text.replace('\n', ' ').replace('\t', ' ')
     text = re.sub(r'http\S+|www\.\S+', '', text)
@@ -113,9 +133,9 @@ def encode_and_pad(texts: list, vocab: dict, max_seq_len: int = MAX_SEQ_LEN) -> 
 @st.cache_resource
 def load_artifacts():
     """Load the trained PyTorch model, vocabulary, and config (cached)."""
-    with open('vocab_pytorch.pkl', 'rb') as f:
+    with open(VOCAB_PATH, 'rb') as f:
         vocab = pickle.load(f)
-    with open('model_config_pytorch.pkl', 'rb') as f:
+    with open(CONFIG_PATH, 'rb') as f:
         config = pickle.load(f)
 
     model = BiLSTMClassifier(
@@ -125,7 +145,7 @@ def load_artifacts():
         num_labels    = config['num_labels'],
         max_seq_len   = config['max_seq_len'],
     )
-    model.load_state_dict(torch.load('toxicity_model_pytorch.pth', map_location=DEVICE))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE, weights_only=True))
     model.to(DEVICE)
     model.eval()
 
@@ -237,7 +257,7 @@ with tab1:
                 with cols[i % 3]:
                     flagged_label = score >= threshold
                     st.markdown(f"**{LABEL_ICONS[label]} {label.replace('_', ' ').title()}**")
-                    st.progress(float(score))
+                    st.progress(min(max(float(score), 0.0), 1.0))
                     badge = "🚨 DETECTED" if flagged_label else "✅ Clean"
                     st.markdown(
                         f"<span style='background-color:{'#fde8e8' if flagged_label else '#e8fdf0'};"
@@ -284,10 +304,17 @@ with tab2:
                 st.success(f"✅ Loaded {len(upload_df):,} comments.")
                 st.dataframe(upload_df[['comment_text']].head(5))
 
+                # FIX: store results in session_state. Clicking the download
+                # button reruns the script, which used to wipe the results.
+                file_key = (uploaded_file.name, uploaded_file.size)
                 if st.button("🔍 Run Bulk Analysis", type="primary"):
                     with st.spinner(f"Analyzing {len(upload_df):,} comments..."):
-                        results_df = predict_batch(upload_df['comment_text'].tolist(),
-                                                   model, vocab)
+                        texts = upload_df['comment_text'].fillna('').astype(str).tolist()
+                        st.session_state['bulk_probs'] = predict_batch(texts, model, vocab)
+                        st.session_state['bulk_key']   = file_key
+
+                if st.session_state.get('bulk_key') == file_key:
+                    results_df = st.session_state['bulk_probs'].copy()
                     for lbl in LABEL_COLS:
                         results_df[f'{lbl}_flag'] = (results_df[lbl] >= threshold).astype(int)
                     results_df['any_toxic'] = results_df[[f'{l}_flag' for l in LABEL_COLS]].max(axis=1)
@@ -301,7 +328,7 @@ with tab2:
                     c1.metric("Total Comments", f"{total:,}")
                     c2.metric("Toxic Comments", f"{n_toxic:,}")
                     c3.metric("Clean Comments", f"{total - n_toxic:,}")
-                    c4.metric("Toxic %",        f"{n_toxic/total*100:.1f}%")
+                    c4.metric("Toxic %",        f"{n_toxic/total*100:.1f}%" if total else "0%")
 
                     label_totals = {l: results_df[f'{l}_flag'].sum() for l in LABEL_COLS}
                     fig2, ax2 = plt.subplots(figsize=(9, 4))
@@ -357,7 +384,7 @@ with tab3:
             "model(tensor) inside torch.no_grad()"
         ]
     }
-    st.dataframe(pd.DataFrame(diff_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(diff_data))   # FIX: use_container_width is removed in new Streamlit
 
     st.markdown("---")
     st.markdown("### PyTorch Model Architecture")

@@ -13,11 +13,9 @@
 
 Online platforms face a massive challenge moderating millions of user comments every day. This project automates toxic comment detection using deep learning — analyzing text and predicting the likelihood of a comment being **toxic, obscene, threatening, insulting, or hateful** in real time.
 
-**Two complete implementations are provided:**
-- ✅ `comment_toxicity_detection_pytorch.py` — **PyTorch** version (primary)
-- ✅ `comment_toxicity_detection.py` — **TensorFlow/Keras** version (alternative)
+The model is built in **PyTorch** with a hand-written training loop, which gives full control over every step: forward pass, loss, backpropagation and weight updates.
 
-Both produce identical results. The PyTorch version gives you full control over the training loop, which is valuable for learning and customization.
+**Results on the 31,915-comment validation set:** macro ROC-AUC **0.974**, Hamming loss **0.018**. See [Results](#-results) for per-label scores and known limitations.
 
 ---
 
@@ -26,28 +24,22 @@ Both produce identical results. The PyTorch version gives you full control over 
 ```
 comment-toxicity-detection/
 │
-├── 📓 Notebooks & Scripts
-│   ├── Comment_Toxicity_Detection.ipynb         # Jupyter Notebook (step-by-step)
-│   ├── comment_toxicity_detection_pytorch.py    # Full pipeline — PyTorch version
-│   └── comment_toxicity_detection.py            # Full pipeline — TensorFlow version
+├── 📓 Notebook & Script
+│   ├── Comment_Toxicity_Detection_PyTorch.ipynb # Jupyter Notebook (step-by-step)
+│   └── comment_toxicity_detection_pytorch.py    # Full training pipeline
 │
-├── 🌐 Streamlit Apps
-│   ├── app_pytorch.py                           # Web app — PyTorch version
-│   └── app.py                                   # Web app — TensorFlow version
+├── 🌐 Streamlit App
+│   ├── app_pytorch.py                           # Web app
+│   └── sample_comments.csv                      # 12 example comments for the bulk-upload tab
 │
-├── 📁 Data (add manually — not included in repo)
-│   ├── train.csv                                # 159,571 labeled comments
-│   └── test.csv                                 # 153,164 comments for prediction
-│
-├── 📦 Model Artifacts (generated after training)
+├── 📦 Trained Model (included, so the app runs without retraining)
 │   ├── toxicity_model_pytorch.pth               # PyTorch model weights
 │   ├── vocab_pytorch.pkl                        # Vocabulary dictionary
-│   ├── model_config_pytorch.pkl                 # Model architecture config
-│   ├── toxicity_model.h5                        # TensorFlow model (alternative)
-│   └── tokenizer.pkl                            # Keras tokenizer (alternative)
+│   └── model_config_pytorch.pkl                 # Model architecture config
 │
-├── 📊 Output
-│   └── test_predictions_pytorch.csv             # Toxicity predictions on test set
+├── 📁 Data (add manually — not included, too large for GitHub)
+│   ├── train.csv                                # 159,571 labeled comments
+│   └── test.csv                                 # 153,164 comments for prediction
 │
 ├── 🖼️ plots/
 │   ├── label_distribution.png
@@ -57,11 +49,9 @@ comment-toxicity-detection/
 │   ├── training_history.png
 │   └── roc_auc_scores.png
 │
-├── 📄 Docs
-│   ├── CommentToxicity_Explanation_Guide.docx   # Full project walkthrough document
-│   └── README.md                                # This file
-│
-└── requirements.txt                             # All Python dependencies
+├── README.md                                    # This file
+├── requirements.txt                             # All Python dependencies
+└── .gitignore
 ```
 
 ---
@@ -98,52 +88,50 @@ comment-toxicity-detection/
 ### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/comment-toxicity-detection.git
-cd comment-toxicity-detection
+git clone https://github.com/Dewakaran0416/Deep-Learning-for-Comment-Toxicity-Detection.git
+cd Deep-Learning-for-Comment-Toxicity-Detection
 ```
 
 ### Step 2 — Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+python -m venv venv
+venv\Scripts\activate          # Windows  (macOS/Linux: source venv/bin/activate)
+python -m pip install -r requirements.txt
 ```
 
-Or install manually:
+> **Windows tip:** if `import torch` fails with `WinError 126 … torch_python.dll`, install the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) and reinstall the CPU build: `python -m pip install torch --index-url https://download.pytorch.org/whl/cpu`
+
+### Step 3 — Try the App Right Away (optional)
+
+The trained model is included, so you can skip training:
 
 ```bash
-pip install torch pandas numpy scikit-learn matplotlib seaborn streamlit
+streamlit run app_pytorch.py
 ```
 
-### Step 3 — Add the Dataset
+### Step 4 — Add the Dataset (only needed to retrain)
 
 Download the dataset from [Kaggle — Jigsaw Toxic Comment Classification](https://www.kaggle.com/competitions/jigsaw-toxic-comment-classification-challenge/data) and place both files in the project root:
 
 ```
-comment-toxicity-detection/
+Deep-Learning-for-Comment-Toxicity-Detection/
 ├── train.csv
 └── test.csv
 ```
 
-### Step 4 — Train the Model
+### Step 5 — Train the Model
 
 ```bash
-# PyTorch version (recommended)
 python comment_toxicity_detection_pytorch.py
-
-# OR TensorFlow version
-python comment_toxicity_detection.py
 ```
 
-This will generate all model artifacts, plots, and the predictions CSV automatically.
+This generates the model artifacts, plots, and predictions CSV in the project folder. It takes about 15–25 minutes on a CPU. All paths are relative to the script, so you can run it from any folder.
 
-### Step 5 — Launch the Web App
+### Step 6 — Launch the Web App
 
 ```bash
-# PyTorch app
 streamlit run app_pytorch.py
-
-# OR TensorFlow app
-streamlit run app.py
 ```
 
 Opens at: **http://localhost:8501**
@@ -162,7 +150,7 @@ BiLSTMClassifier(
   Dense (Sigmoid)    →  (batch, 6)            — probability per label
 )
 
-Total Parameters : ~1,994,758
+Total Parameters : 1,995,334   (96% in the embedding layer)
 Loss Function    : Binary Cross-Entropy  (multi-label)
 Optimizer        : Adam  (lr = 0.001)
 ```
@@ -179,9 +167,9 @@ A regular LSTM reads text left-to-right only. A **Bidirectional LSTM** reads it 
 
 ---
 
-## 🔄 PyTorch vs TensorFlow — Key Differences
+## 🔄 Why PyTorch? How it compares to Keras
 
-| Feature | TensorFlow / Keras | PyTorch (this version) |
+| Feature | TensorFlow / Keras | PyTorch (this project) |
 |---|---|---|
 | Model definition | `keras.Sequential([...])` | `class BiLSTMClassifier(nn.Module)` |
 | Tokenizer | `Keras Tokenizer` | Manual `collections.Counter` vocab |
@@ -197,7 +185,7 @@ A regular LSTM reads text left-to-right only. A **Bidirectional LSTM** reads it 
 
 ## 🚀 Notebook Walkthrough
 
-The Jupyter Notebook `Comment_Toxicity_Detection.ipynb` walks through all 13 steps:
+The Jupyter Notebook `Comment_Toxicity_Detection_PyTorch.ipynb` walks through all 13 steps:
 
 | Step | Description |
 |---|---|
@@ -207,7 +195,7 @@ The Jupyter Notebook `Comment_Toxicity_Detection.ipynb` walks through all 13 ste
 | **Step 4** | Text preprocessing — clean_text() function |
 | **Step 5** | Build vocabulary, encode texts, pad sequences, train/val split |
 | **Step 6** | Build Bidirectional LSTM model |
-| **Step 7** | Train model with manual loop, EarlyStopping, and ModelCheckpoint |
+| **Step 7** | Train model with a manual loop, early stopping (patience 2) and best-model saving |
 | **Step 8** | Plot training and validation loss / accuracy curves |
 | **Step 9** | Evaluate — Hamming Loss, ROC-AUC, F1 per label |
 | **Step 10** | Test on sample comments with predict_toxicity() |
@@ -224,7 +212,33 @@ The Jupyter Notebook `Comment_Toxicity_Detection.ipynb` walks through all 13 ste
 | **💬 Single Comment** | Type any comment → see probabilities for all 6 labels as color-coded progress bars + CLEAN / TOXIC verdict |
 | **📂 Bulk CSV Upload** | Upload a CSV with `comment_text` column → batch analyze all comments → download results CSV |
 | **📊 Dataset Insights** | View dataset statistics, label distribution chart, PyTorch vs TensorFlow comparison table |
+| **Sample data** | Upload `sample_comments.csv` to try the bulk tab. Results stay on screen after you download them |
 | **Sidebar Slider** | Adjust detection threshold (default 0.5) — higher = stricter detection |
+
+---
+
+## 📊 Results
+
+Validation set: 31,915 comments (20% hold-out, `random_state=42`). Threshold 0.5.
+
+| Label | Precision | Recall | F1 | ROC-AUC |
+|---|---|---|---|---|
+| toxic | 0.830 | 0.762 | 0.795 | 0.973 |
+| severe_toxic | 0.575 | 0.131 | 0.213 | 0.987 |
+| obscene | 0.822 | 0.774 | 0.797 | 0.988 |
+| threat | 0.000 | 0.000 | 0.000 | 0.959 |
+| insult | 0.718 | 0.685 | 0.701 | 0.980 |
+| identity_hate | 0.000 | 0.000 | 0.000 | 0.956 |
+| **Overall** | | | micro F1 0.733 | **macro 0.974** |
+
+Hamming loss: **0.018**. Best validation loss 0.0499 at epoch 4 of 5; those weights are restored.
+
+### Known limitations
+
+- **Rare labels:** `threat` (0.3% of data) and `identity_hate` never cross the 0.5 threshold, even though their ROC-AUC is ~0.96. The model ranks them correctly but isn't confident enough. Next step: `BCEWithLogitsLoss(pos_weight=...)` and a tuned threshold per label.
+- **Accuracy is misleading:** exact-match accuracy is 91.8%, but predicting "clean" for everything already scores 89.8%. That's why ROC-AUC and F1 are reported.
+- **Keyword reliance:** some negations are missed ("You are not stupid at all" scores as toxic). A pre-trained transformer such as BERT would handle context better.
+- **Possible identity bias:** comments that mention identity terms are often labelled toxic in this dataset, so harmless mentions can be over-flagged.
 
 ---
 
@@ -296,5 +310,18 @@ The Jupyter Notebook `Comment_Toxicity_Detection.ipynb` walks through all 13 ste
 ---
 
 
+
+## 👤 Author
+
+**Dewakaran** — Senior Lead, Operations (US Healthcare RCM) · GUVI Master Data Science Program
+Domain: NLP · Deep Learning · Content Moderation | Stack: Python, PyTorch, Streamlit
+
+---
+
+## 📄 License
+
+For educational purposes. Dataset: [Jigsaw Toxic Comment Classification Challenge](https://www.kaggle.com/competitions/jigsaw-toxic-comment-classification-challenge) (Kaggle).
+
+---
 
 ## ⭐ If this project helped you, give it a star on GitHub!
